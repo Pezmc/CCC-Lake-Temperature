@@ -36,7 +36,7 @@ void waitForWifi() {
 }
 
 ///------ LEDS
-#define BRIGHTNESS  64
+#define BRIGHTNESS  32
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
 
@@ -73,7 +73,7 @@ void flashMatrixRGB() {
   for (int i = 0; i < numberOfColors; i++) {
     drawAllLEDS(colors[i]);
     FastLED.show();
-    FastLED.delay(500);
+    FastLED.delay(250);
   }
 
   drawMatrixRows(CRGB::White);
@@ -89,6 +89,12 @@ void drawAllLEDS(const struct CRGB & color) {
   fill_solid(leds[0], NUM_LEDS_PER_STRIP, color);
   fill_solid(leds[1], NUM_LEDS_PER_STRIP, color);
   fill_solid(leds[2], NUM_LEDS_PER_STRIP, color);
+}
+
+void blankScreen() {
+  drawAllLEDS(CRGB::Black);
+  FastLED.show();
+  FastLED.delay(1);
 }
 
 ///------ Matrix
@@ -139,7 +145,7 @@ void setFontPixel(uint8_t row, uint8_t column, const struct CRGB & color){
   int arrayNumber = floor(ledNumber / NUM_LEDS_PER_STRIP); // 0 - 2
   int ledNumberInArray = ledNumber % NUM_LEDS_PER_STRIP;
 
-  Serial.println(String("Setting ") + row + ":" + column + " led no=" + ledNumberInArray + " in array " + arrayNumber + " to " + color);  
+  //Serial.println(String("Setting ") + row + ":" + column + " led no=" + ledNumberInArray + " in array " + arrayNumber + " to " + color);  
 
   if (arrayNumber >= NUM_STRIPS) {
     Serial.print("Tried to write to array number bigger than arrays; stripNumber: ");
@@ -153,7 +159,7 @@ void setFontPixel(uint8_t row, uint8_t column, const struct CRGB & color){
     return;
   }
   
-  delay(1);
+  //delay(1);
   
   leds[arrayNumber][ledNumberInArray] = color;
 }
@@ -170,7 +176,25 @@ void scrollMessage() {
   
 }
 
-void drawString(char *msg, uint8_t row, uint8_t col, PixelFont font, const struct CRGB & color, const struct CRGB & background){
+void displayCenteredStringFor(const char *msg, uint8_t row, PixelFont font, const struct CRGB & color, const struct CRGB & background, int timeMs) {
+  displayCenteredString(msg, row, font, color, background);
+  FastLED.delay(timeMs);
+}
+
+
+void displayCenteredString(const char *msg, uint8_t row, PixelFont font, const struct CRGB & color, const struct CRGB & background) {
+  drawCenteredString(msg, row, font, color, background);
+  FastLED.show();
+}
+
+void drawCenteredString(const char *msg, uint8_t row, PixelFont font, const struct CRGB & color, const struct CRGB & background){
+  int messageLength = strlen(msg) * font.width;
+  int startingColumn = (kMatrixWidth - messageLength) / 2; 
+  
+  drawString(msg, row, startingColumn, font, color, CRGB::Black);
+}
+
+void drawString(const char *msg, uint8_t row, uint8_t col, PixelFont font, const struct CRGB & color, const struct CRGB & background){
   for(uint8_t i = 0; i < strlen(msg); i++){
     drawChar(msg[i], row, col + i * font.width, color, font);
   }
@@ -254,12 +278,17 @@ void setup()
   flashMatrixRGB();
 
   connectToWifi();
-  drawString("Connecting to wifi...", -1, 0, Font5x8, CRGB::White, CRGB::Black);
-  FastLED.show();
+  displayCenteredString("Connecting to wifi...", -1, Font5x8, CRGB::White, CRGB::Black);
   waitForWifi();
+  blankScreen();
+  displayCenteredStringFor("Connected!", -1, Font5x8, CRGB::White, CRGB::Black, 2500);
+  
+  blankScreen();
 }
 
 void loop() {
+  delay(5); // safety delay
+  
   DynamicJsonDocument* dataPointer = getData();
   if (!dataPointer) {
     Serial.print("No data returned!");
@@ -278,5 +307,7 @@ void loop() {
   Serial.print("humidity: ");
   Serial.println(relative_humidity);
 
-  delay(1000);
+  String message = "Lake temperature: " + String(temperature, 1) + "!";
+  const char* messageChars = message.c_str();
+  displayCenteredStringFor(messageChars, -1, Font5x8, CRGB::Blue, CRGB::Black, 10000);
 }
