@@ -3,11 +3,10 @@
 #include <FastLED.h>
 #include <math.h>
 
-#include "font4x8.h"
+#include <font5x8.h>
 #include "pixel_font.h"
-#include "font5x8.h"
 
-// WIFI
+///------ WIFI
 const char* ssid     = "Camp2019-things";
 const char* password = "camp2019";
 
@@ -22,7 +21,9 @@ void connectToWifi() {
   Serial.println(ssid);
 
   WiFi.begin(ssid, password);
+}
 
+void waitForWifi() {
   while (WiFi.status() != WL_CONNECTED) {
       delay(500);
       Serial.print(".");
@@ -34,7 +35,7 @@ void connectToWifi() {
   Serial.println(WiFi.localIP());
 }
 
-// LEDS
+///------ LEDS
 #define BRIGHTNESS  64
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
@@ -90,7 +91,7 @@ void drawAllLEDS(const struct CRGB & color) {
   fill_solid(leds[2], NUM_LEDS_PER_STRIP, color);
 }
 
-// Matrix
+///------ Matrix
 // Matrix width and height
 const uint8_t kMatrixWidth = 144;
 const uint8_t kMatrixHeight = 6;
@@ -98,6 +99,8 @@ const uint8_t kMatrixHeight = 6;
 // Matrix pixel layouts
 const bool kMatrixSerpentineLayout = true; // zig zagging data line
 const bool kMatrixXFlipped = true; // rows wired 2,1,4,3
+
+PixelFont Font5x8 = PixelFont(5, 8, 8, font5x8, setFontPixel);
 
 // XY Position helpers
 uint16_t XY(uint8_t x, uint8_t y)
@@ -135,8 +138,22 @@ void setFontPixel(uint8_t row, uint8_t column, const struct CRGB & color){
 
   int arrayNumber = floor(ledNumber / NUM_LEDS_PER_STRIP); // 0 - 2
   int ledNumberInArray = ledNumber % NUM_LEDS_PER_STRIP;
+
+  Serial.println(String("Setting ") + row + ":" + column + " led no=" + ledNumberInArray + " in array " + arrayNumber + " to " + color);  
+
+  if (arrayNumber >= NUM_STRIPS) {
+    Serial.print("Tried to write to array number bigger than arrays; stripNumber: ");
+    Serial.println(arrayNumber);
+    return;
+  }
+
+  if (ledNumberInArray >= NUM_LEDS_PER_STRIP) {
+    Serial.print("Tried to write to led number longer than strip; ledNumber: ");
+    Serial.println(ledNumberInArray);
+    return;
+  }
   
-  Serial.println(String("Setting ") + row + ":" + column + " led no=" + ledNumberInArray + " in array " + arrayNumber + " to " + color);
+  delay(1);
   
   leds[arrayNumber][ledNumberInArray] = color;
 }
@@ -149,7 +166,28 @@ void drawMatrixRows(const struct CRGB & color) {
   }
 }
 
-// JSON
+void scrollMessage() {
+  
+}
+
+void drawString(char *msg, uint8_t row, uint8_t col, PixelFont font, const struct CRGB & color, const struct CRGB & background){
+  for(uint8_t i = 0; i < strlen(msg); i++){
+    drawChar(msg[i], row, col + i * font.width, color, font);
+  }
+}
+
+void drawChar(uint8_t ascii, uint8_t row, uint8_t col, const struct CRGB & color, PixelFont font) {
+  byte *data = font.font + ascii * font.bytes_per_char;
+  for(uint8_t r=0; r<font.height; r++){
+    for(uint8_t c=0; c<font.width; c++){
+      if((data[r] >> (8 - 1 - c)) & 1){
+        setFontPixel(row + r, col + c, color);
+      }
+    }
+  }
+}
+
+///------ JSON
 DynamicJsonDocument doc(300);
 DynamicJsonDocument* getData() {  
   Serial.print("Making request to ");
@@ -215,7 +253,10 @@ void setup()
   setUpLEDS();
   flashMatrixRGB();
 
-  connectToWifi();    
+  connectToWifi();
+  drawString("Connecting to wifi...", -1, 0, Font5x8, CRGB::White, CRGB::Black);
+  FastLED.show();
+  waitForWifi();
 }
 
 void loop() {
