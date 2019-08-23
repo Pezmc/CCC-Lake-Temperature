@@ -95,9 +95,12 @@ void drawAllLEDS(const struct CRGB & color) {
   fill_solid(leds[2], NUM_LEDS_PER_STRIP, color);
 }
 
-void blankScreen() {
+void clearScreen() {
   drawAllLEDS(CRGB::Black);
-  FastLED.show();
+}
+
+void blankScreen() {
+  clearScreen();
   FastLED.delay(1);
 }
 
@@ -273,7 +276,7 @@ DynamicJsonDocument* getData() {
   return &doc;
 }
 
-void displayLakeTemperature() {
+void displayLakeTemperature(bool humidity) {
   DynamicJsonDocument* dataPointer = getData();
   if (!dataPointer) {
     Serial.print("No data returned! Trying again in 15 seconds");
@@ -292,11 +295,17 @@ void displayLakeTemperature() {
   Serial.print("humidity: ");
   Serial.println(relative_humidity);
 
-  blankScreen();
+  clearScreen();
 
-  String message = "LIVE LAKE TEMP: " + String(temperature, 1) + " C!";
-  const char* messageChars = message.c_str();
-  displayCenteredString(messageChars, -1, Font5x8, CRGB::Blue, CRGB::Black);  
+  if (!humidity) {
+    String message = "LIVE LAKE TEMP: " + String(temperature, 2) + " C!";
+    const char* messageChars = message.c_str();
+    displayCenteredString(messageChars, -1, Font5x8, CRGB::Blue, CRGB::Black);
+  } else { 
+    String message = "LIVE LAKE HUMIDITY: " + String(relative_humidity, 2) + "%!";
+    const char* messageChars = message.c_str();
+    displayCenteredString(messageChars, -1, Font5x8, CRGB::Blue, CRGB::Black);
+  }
 }
 
 void connectToWifiWithStatusUpdates() {
@@ -306,6 +315,156 @@ void connectToWifiWithStatusUpdates() {
   blankScreen();
   displayCenteredStringFor("Connected!", -1, Font5x8, CRGB::White, CRGB::Black, 2500);
   blankScreen();
+}
+
+// ------ Colors
+
+CRGBPalette16 currentPalette = RainbowColors_p;
+TBlendType    currentBlending = LINEARBLEND;
+
+extern CRGBPalette16 myRedWhiteBluePalette;
+extern const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM;
+
+
+// This function fills the palette with totally random colors.
+void SetupTotallyRandomPalette()
+{
+  for ( int i = 0; i < 16; i++) {
+    currentPalette[i] = CHSV( random8(), 255, random8());
+  }
+}
+
+// This function sets up a palette of black and white stripes,
+// using code.  Since the palette is effectively an array of
+// sixteen CRGB colors, the various fill_* functions can be used
+// to set them up.
+void SetupBlackAndWhiteStripedPalette()
+{
+  // 'black out' all 16 palette entries...
+  fill_solid( currentPalette, 16, CRGB::Black);
+  // and set every fourth one to white.
+  currentPalette[0] = CRGB::White;
+  currentPalette[4] = CRGB::White;
+  currentPalette[8] = CRGB::White;
+  currentPalette[12] = CRGB::White;
+
+}
+
+// This function sets up a palette of purple and green stripes.
+void SetupPurpleAndGreenPalette()
+{
+  CRGB purple = CHSV( HUE_PURPLE, 255, 255);
+  CRGB green  = CHSV( HUE_GREEN, 255, 255);
+  CRGB black  = CRGB::Black;
+
+  currentPalette = CRGBPalette16(
+                     green,  green,  black,  black,
+                     purple, purple, black,  black,
+                     green,  green,  black,  black,
+                     purple, purple, black,  black );
+}
+
+void changePalette()
+{
+  randomSeed(analogRead(0));
+
+  int number = random(0, 11);
+
+  if ( number ==  0)  {
+    currentPalette = RainbowColors_p;
+    currentBlending = LINEARBLEND;
+  }
+  if ( number == 1)  {
+    currentPalette = RainbowStripeColors_p;
+    currentBlending = NOBLEND;
+  }
+  if ( number == 2)  {
+    currentPalette = RainbowStripeColors_p;
+    currentBlending = LINEARBLEND;
+  }
+  if ( number == 3)  {
+    SetupPurpleAndGreenPalette();
+    currentBlending = LINEARBLEND;
+  }
+  if ( number == 4)  {
+    SetupTotallyRandomPalette();
+    currentBlending = LINEARBLEND;
+  }
+  if ( number == 5)  {
+    SetupBlackAndWhiteStripedPalette();
+    currentBlending = NOBLEND;
+  }
+  if ( number == 6)  {
+    SetupBlackAndWhiteStripedPalette();
+    currentBlending = LINEARBLEND;
+  }
+  if ( number == 7)  {
+    currentPalette = CloudColors_p;
+    currentBlending = LINEARBLEND;
+  }
+  if ( number == 8)  {
+    currentPalette = PartyColors_p;
+    currentBlending = LINEARBLEND;
+  }
+  if ( number == 9)  {
+    currentPalette = myRedWhiteBluePalette_p;
+    currentBlending = NOBLEND;
+  }
+  if ( number == 10)  {
+    currentPalette = myRedWhiteBluePalette_p;
+    currentBlending = LINEARBLEND;
+  }
+}
+
+const TProgmemPalette16 myRedWhiteBluePalette_p PROGMEM =
+{
+  CRGB::Red,
+  CRGB::Gray, // 'white' is too bright compared to red and blue
+  CRGB::Blue,
+  CRGB::Black,
+
+  CRGB::Red,
+  CRGB::Gray,
+  CRGB::Blue,
+  CRGB::Black,
+
+  CRGB::Red,
+  CRGB::Red,
+  CRGB::Gray,
+  CRGB::Gray,
+  CRGB::Blue,
+  CRGB::Blue,
+  CRGB::Black,
+  CRGB::Black
+};
+
+
+void fillLEDsFromPaletteColors(int startColor)
+{
+  uint8_t brightness = 255;
+
+  int colorIndex = startColor;
+  for (int x = 0; x < kMatrixWidth; x++) {  
+    for (int y = 0; y < kMatrixHeight; y++) {
+      int ledNumber = XY(x, y);
+      int arrayNumber = floor(ledNumber / NUM_LEDS_PER_STRIP); // 0 - 2
+      int ledNumberInArray = ledNumber % NUM_LEDS_PER_STRIP;
+  
+      leds[arrayNumber][ledNumberInArray] = ColorFromPalette(currentPalette, colorIndex, brightness, currentBlending);
+    }
+
+    colorIndex += 3;
+  }
+}
+
+void scrollThroughColors(int displaySeconds) {
+  int updatesPerSecond = 50;
+
+  int numberOfUpdatesToDisplay = displaySeconds * updatesPerSecond;
+  for (int i = 0; i < numberOfUpdatesToDisplay; i++) {
+    fillLEDsFromPaletteColors(i);
+    FastLED.delay(1000 / updatesPerSecond);
+  }
 }
 
 // ------ MAIN
@@ -320,6 +479,7 @@ void setup()
   connectToWifiWithStatusUpdates();
 }
 
+
 void loop() {
   delay(5); // safety delay
 
@@ -328,6 +488,18 @@ void loop() {
     connectToWifiWithStatusUpdates();
   }
 
-  displayLakeTemperature();
-  FastLED.delay(10000);
+  for (int i = 0; i < 3; i++) {
+    displayLakeTemperature(false);
+    FastLED.delay(5000);
+  }
+ 
+  changePalette();
+  clearScreen();
+  scrollThroughColors(5);
+
+  displayLakeTemperature(true);
+  FastLED.delay(5000);
 }
+
+
+// TODO DEAD LAKE TEMP.
