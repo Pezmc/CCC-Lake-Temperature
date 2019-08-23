@@ -24,7 +24,7 @@ void connectToWifi() {
 }
 
 void waitForWifi() {
-  while (WiFi.status() != WL_CONNECTED) {
+  while (!connectedToWifi()) {
       delay(500);
       Serial.print(".");
   }
@@ -33,6 +33,10 @@ void waitForWifi() {
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
+}
+
+bool connectedToWifi() {
+  return WiFi.status() == WL_CONNECTED;
 }
 
 ///------ LEDS
@@ -269,30 +273,11 @@ DynamicJsonDocument* getData() {
   return &doc;
 }
 
-void setup()
-{
-  Serial.begin(115200);
-  delay(10);
-
-  setUpLEDS();
-  flashMatrixRGB();
-
-  connectToWifi();
-  displayCenteredString("Connecting to wifi...", -1, Font5x8, CRGB::White, CRGB::Black);
-  waitForWifi();
-  blankScreen();
-  displayCenteredStringFor("Connected!", -1, Font5x8, CRGB::White, CRGB::Black, 2500);
-  
-  blankScreen();
-}
-
-void loop() {
-  delay(5); // safety delay
-  
+void displayLakeTemperature() {
   DynamicJsonDocument* dataPointer = getData();
   if (!dataPointer) {
-    Serial.print("No data returned!");
-    delay(5000);
+    Serial.print("No data returned! Trying again in 15 seconds");
+    delay(15000);
     return;
   }
   
@@ -307,7 +292,42 @@ void loop() {
   Serial.print("humidity: ");
   Serial.println(relative_humidity);
 
-  String message = "Lake temperature: " + String(temperature, 1) + "!";
+  blankScreen();
+
+  String message = "LIVE LAKE TEMP: " + String(temperature, 1) + " C!";
   const char* messageChars = message.c_str();
-  displayCenteredStringFor(messageChars, -1, Font5x8, CRGB::Blue, CRGB::Black, 10000);
+  displayCenteredString(messageChars, -1, Font5x8, CRGB::Blue, CRGB::Black);  
+}
+
+void connectToWifiWithStatusUpdates() {
+  connectToWifi();
+  displayCenteredString("Connecting to wifi...", -1, Font5x8, CRGB::White, CRGB::Black);
+  waitForWifi();
+  blankScreen();
+  displayCenteredStringFor("Connected!", -1, Font5x8, CRGB::White, CRGB::Black, 2500);
+  blankScreen();
+}
+
+// ------ MAIN
+void setup()
+{
+  Serial.begin(115200);
+  delay(10);
+
+  setUpLEDS();
+  flashMatrixRGB();
+
+  connectToWifiWithStatusUpdates();
+}
+
+void loop() {
+  delay(5); // safety delay
+
+  if (!connectedToWifi()) {
+    displayCenteredStringFor("Wifi Disconnected...", -1, Font5x8, CRGB::White, CRGB::Black, 500);
+    connectToWifiWithStatusUpdates();
+  }
+
+  displayLakeTemperature();
+  FastLED.delay(10000);
 }
