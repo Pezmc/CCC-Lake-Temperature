@@ -40,7 +40,7 @@ bool connectedToWifi() {
 }
 
 ///------ LEDS
-#define BRIGHTNESS  32
+#define BRIGHTNESS  96
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
 
@@ -462,7 +462,7 @@ void scrollThroughColors(int displaySeconds) {
 
   int numberOfUpdatesToDisplay = displaySeconds * updatesPerSecond;
   for (int i = 0; i < numberOfUpdatesToDisplay; i++) {
-    fillLEDsFromPaletteColors(i);
+    fillLEDsFromPaletteColors(i * 3);
     FastLED.delay(1000 / updatesPerSecond);
   }
 }
