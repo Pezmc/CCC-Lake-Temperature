@@ -1,6 +1,11 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
 #include <FastLED.h>
+#include <math.h>
+
+#include "font4x8.h"
+#include "pixel_font.h"
+#include "font5x8.h"
 
 // WIFI
 const char* ssid     = "Camp2019-things";
@@ -62,18 +67,89 @@ CRGB colors[3] = { CRGB::Red, CRGB::Green, CRGB::Blue };
 
 void flashMatrixRGB() {
   Serial.println("Flashing RGB");
-  
-  for (int i = 0; i < 3; i++) {
-    Serial.println(i);
-    fill_solid(leds[0], NUM_LEDS_PER_STRIP, colors[i]);
-    fill_solid(leds[1], NUM_LEDS_PER_STRIP, colors[i]);
-    fill_solid(leds[2], NUM_LEDS_PER_STRIP, colors[i]);
 
+  int numberOfColors = sizeof(colors) / sizeof(CRGB);
+  for (int i = 0; i < numberOfColors; i++) {
+    drawAllLEDS(colors[i]);
     FastLED.show();
-    FastLED.delay(1000);
+    FastLED.delay(500);
+  }
+
+  drawMatrixRows(CRGB::White);
+  FastLED.show();
+  FastLED.delay(1000);
+
+  drawAllLEDS(CRGB::Black);
+  FastLED.show();
+  FastLED.delay(1);
+}
+
+void drawAllLEDS(const struct CRGB & color) {
+  fill_solid(leds[0], NUM_LEDS_PER_STRIP, color);
+  fill_solid(leds[1], NUM_LEDS_PER_STRIP, color);
+  fill_solid(leds[2], NUM_LEDS_PER_STRIP, color);
+}
+
+// Matrix
+// Matrix width and height
+const uint8_t kMatrixWidth = 144;
+const uint8_t kMatrixHeight = 6;
+
+// Matrix pixel layouts
+const bool kMatrixSerpentineLayout = true; // zig zagging data line
+const bool kMatrixXFlipped = true; // rows wired 2,1,4,3
+
+// XY Position helpers
+uint16_t XY(uint8_t x, uint8_t y)
+{
+  uint16_t i;
+
+  if (kMatrixXFlipped) {
+    if( y & 0x01) {
+      y -= 1;
+    } else {
+      y += 1;
+    }
+  }
+
+  if(kMatrixSerpentineLayout == false) {
+    i = (y * kMatrixWidth) + x;
+  }
+
+  if(kMatrixSerpentineLayout == true) {
+    if(y & 0x01) {
+      // Odd rows run backwards
+      uint8_t reverseX = (kMatrixWidth - 1) - x;
+      i = (y * kMatrixWidth) + reverseX;
+    } else {
+      // Even rows run forwards
+      i = (y * kMatrixWidth) + x;
+    }
+  }
+  
+  return i;
+}
+
+void setFontPixel(uint8_t row, uint8_t column, const struct CRGB & color){
+  int ledNumber = XY(column, row); // 0 - 864
+
+  int arrayNumber = floor(ledNumber / NUM_LEDS_PER_STRIP); // 0 - 2
+  int ledNumberInArray = ledNumber % NUM_LEDS_PER_STRIP;
+  
+  Serial.println(String("Setting ") + row + ":" + column + " led no=" + ledNumberInArray + " in array " + arrayNumber + " to " + color);
+  
+  leds[arrayNumber][ledNumberInArray] = color;
+}
+
+void drawMatrixRows(const struct CRGB & color) {
+  for (int y = 0; y < kMatrixHeight; y++) {
+    for (int x = 0; x <= y; x++) {
+      setFontPixel(y, x, color);
+    }
   }
 }
 
+// JSON
 DynamicJsonDocument doc(300);
 DynamicJsonDocument* getData() {  
   Serial.print("Making request to ");
@@ -118,7 +194,16 @@ DynamicJsonDocument* getData() {
     Serial.print(responseString);
     return nullptr;
   }
-  
+
+  /*
+  rh: 33.17,
+  rssi: -81,
+  t: 32.34,
+  status_message: "STALE",
+  status: 1,
+  updated: 1566569145722
+  */
+
   return &doc;
 }
 
