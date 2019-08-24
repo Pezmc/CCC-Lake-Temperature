@@ -1,5 +1,9 @@
 #include <ArduinoJson.h>
 #include <WiFi.h>
+#include <WiFiClient.h>
+#include <WebServer.h>
+#include <ESPmDNS.h>
+#include <Update.h>
 #include <FastLED.h>
 #include <math.h>
 
@@ -9,6 +13,7 @@
 ///------ WIFI
 const char* ssid     = "Camp2019-things";
 const char* password = "camp2019";
+const char* localDNS = "LiveLakeDisplay";
 
 const char* host = "marekventur.com";
 const int port = 8973;
@@ -42,8 +47,94 @@ bool connectedToWifi() {
   return WiFi.status() == WL_CONNECTED;
 }
 
+// ------ OTA Updates
+
+WebServer server(80);
+ 
+const char* serverIndex = 
+"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js'></script>"
+"<form method='POST' action='#' enctype='multipart/form-data' id='upload_form'>"
+   "<input type='file' name='update'>"
+        "<input type='submit' value='Update'>"
+    "</form>"
+ "<div id='prg'>progress: 0%</div>"
+ "<script>"
+  "$('form').submit(function(e){"
+  "e.preventDefault();"
+  "var form = $('#upload_form')[0];"
+  "var data = new FormData(form);"
+  " $.ajax({"
+  "url: '/update',"
+  "type: 'POST',"
+  "data: data,"
+  "contentType: false,"
+  "processData:false,"
+  "xhr: function() {"
+  "var xhr = new window.XMLHttpRequest();"
+  "xhr.upload.addEventListener('progress', function(evt) {"
+  "if (evt.lengthComputable) {"
+  "var per = evt.loaded / evt.total;"
+  "$('#prg').html('progress: ' + Math.round(per*100) + '%');"
+  "}"
+  "}, false);"
+  "return xhr;"
+  "},"
+  "success:function(d, s) {"
+  "console.log('success!')" 
+ "},"
+ "error: function (a, b, c) {"
+ "}"
+ "});"
+ "});"
+ "</script>";
+
+void setUpOTAUpdates() {
+  /*use mdns for host name resolution*/
+  if (!MDNS.begin(localDNS)) {
+    Serial.println("Error setting up MDNS responder!");
+    delay(15000);
+    return;
+  }
+  Serial.println("mDNS responder started");
+
+  /*return index page which is stored in serverIndex */
+  server.on("/serverIndex", HTTP_GET, []() {
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/html", serverIndex);
+  });
+  /*handling uploading firmware file */
+  server.on("/update", HTTP_POST, []() {
+    server.sendHeader("Connection", "close");
+    server.send(200, "text/plain", (Update.hasError()) ? "FAIL" : "OK");
+    ESP.restart();
+  }, []() {
+    HTTPUpload& upload = server.upload();
+    if (upload.status == UPLOAD_FILE_START) {
+      Serial.printf("Update: %s\n", upload.filename.c_str());
+      if (!Update.begin(UPDATE_SIZE_UNKNOWN)) { //start with max available size
+        Update.printError(Serial);
+      }
+    } else if (upload.status == UPLOAD_FILE_WRITE) {
+      /* flashing firmware to ESP*/
+      if (Update.write(upload.buf, upload.currentSize) != upload.currentSize) {
+        Update.printError(Serial);
+      }
+    } else if (upload.status == UPLOAD_FILE_END) {
+      if (Update.end(true)) { //true to set the size to the current progress
+        Serial.printf("Update Success: %u\nRebooting...\n", upload.totalSize);
+      } else {
+        Update.printError(Serial);
+      }
+    }
+  });
+
+  Serial.println("Server configured");
+  
+  server.begin();
+}
+
 ///------ LEDS
-#define BRIGHTNESS  96
+#define BRIGHTNESS  255
 #define LED_TYPE    WS2811
 #define COLOR_ORDER GRB
 
@@ -201,6 +292,10 @@ void drawCenteredString(const char *msg, uint8_t row, PixelFont font, const stru
 }
 
 void drawString(const char *msg, uint8_t row, uint8_t col, PixelFont font, const struct CRGB & color, const struct CRGB & background){
+
+  Serial.print("Displaying ");
+  Serial.println(msg);
+  
   for(uint8_t i = 0; i < strlen(msg); i++){
     drawChar(msg[i], row, col + i * font.width, color, font);
   }
@@ -219,7 +314,7 @@ void drawChar(uint8_t ascii, uint8_t row, uint8_t col, const struct CRGB & color
 
 ///------ JSON
 DynamicJsonDocument doc(300);
-DynamicJsonDocument* getJSONData(jsonPath) {
+DynamicJsonDocument* getJSONData(const char* jsonPath) {
   Serial.print("Making request to ");
   Serial.print(host);
   Serial.print(":");
@@ -236,7 +331,7 @@ DynamicJsonDocument* getJSONData(jsonPath) {
   Serial.println(jsonPath);
 
   // This will send the request to the server
-  client.print(String("GET ") + path + " HTTP/1.1\r\n" +
+  client.print(String("GET ") + jsonPath + " HTTP/1.1\r\n" +
                "Host: " + host + "\r\n" +
                "Connection: close\r\n\r\n");
   unsigned long timeout = millis();
@@ -317,16 +412,22 @@ void displayLakeStats() {
   }
   DynamicJsonDocument stats = *statsPointer;
 
-  int count = stats["count"],
-  long maxTime = stats["maxTime"],
-  long minTime = stats["minTime"],
-  double maxVbat = stats["maxVbat"],
-  double minVbat = stats["minVbat"], 
-  double maxTemp = stats["maxTemp"],
-  double minTemp = stats["minTemp"],
+  Serial.println(stats.as<String>());
 
+  int count = stats["count"];
+  long maxTime = stats["maxTime"];
+  long minTime = stats["minTime"];
+  double maxVbat = stats["maxVbat"];
+  double minVbat = stats["minVbat"]; 
+  double maxTemp = stats["maxTemp"];
+  double minTemp = stats["minTemp"];
 
-  String message = "TEMP MAX: " + String(maxTemp, 2) + " C, MIN: " + String(minTemp, 2) + " C" ;
+  Serial.println(maxTemp);
+  Serial.println(stats["maxTemp"].as<String>());
+
+  clearScreen();
+
+  String message = "LAKE MAX: " + String(maxTemp, 2) + ", MIN: " + String(minTemp, 2) + " C" ;
   const char* messageChars = message.c_str();
   displayCenteredString(messageChars, -1, Font5x8, CRGB::Red, CRGB::Black);
 }
@@ -494,16 +595,19 @@ void scrollThroughColors(int displaySeconds) {
 void setup()
 {
   Serial.begin(115200);
-  delay(10);
+  delay(100);
+
+  connectToWifiWithStatusUpdates();
+
+  setUpOTAUpdates();
 
   setUpLEDS();
   flashMatrixRGB();
-
-  connectToWifiWithStatusUpdates();
 }
 
 
 void loop() {
+  server.handleClient();
   delay(5); // safety delay
 
   if (!connectedToWifi()) {
@@ -522,13 +626,13 @@ void loop() {
   clearScreen();
   scrollThroughColors(5);
 
-  // Humidity for 5 seconds
+  // Humidity for 7.5 seconds
   displayLakeTemperature(true);
-  FastLED.delay(5000);
-
-  // Max/min temp for 5 seconds
+  FastLED.delay(7500);
+  
+  // Max/min temp for 7.5 seconds
   displayLakeStats();
-  FastLED.delay(5000);
+  FastLED.delay(7500);
 }
 
 
