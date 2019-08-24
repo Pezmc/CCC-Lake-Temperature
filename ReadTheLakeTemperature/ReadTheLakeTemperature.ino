@@ -10,6 +10,8 @@
 #include <font5x8.h>
 #include "pixel_font.h"
 
+const bool DEBUG = false;
+
 ///------ WIFI
 const char* ssid     = "Camp2019-things";
 const char* password = "camp2019";
@@ -133,6 +135,12 @@ void setUpOTAUpdates() {
   server.begin();
 }
 
+void handleClientRequest() {
+  delay(1); // safety delay
+  server.handleClient();
+  delay(1); // safety delay
+}
+
 ///------ LEDS
 #define BRIGHTNESS  255
 #define LED_TYPE    WS2811
@@ -249,14 +257,18 @@ void setFontPixel(uint8_t row, uint8_t column, const struct CRGB & color){
   //Serial.println(String("Setting ") + row + ":" + column + " led no=" + ledNumberInArray + " in array " + arrayNumber + " to " + color);  
 
   if (arrayNumber >= NUM_STRIPS) {
-    Serial.print("Tried to write to array number bigger than arrays; stripNumber: ");
-    Serial.println(arrayNumber);
+    if (DEBUG) {
+      Serial.print("Tried to write to array number bigger than arrays; stripNumber: ");
+      Serial.println(arrayNumber);
+    }
     return;
   }
 
   if (ledNumberInArray >= NUM_LEDS_PER_STRIP) {
-    Serial.print("Tried to write to led number longer than strip; ledNumber: ");
-    Serial.println(ledNumberInArray);
+    if (DEBUG) {
+      Serial.print("Tried to write to led number longer than strip; ledNumber: ");
+      Serial.println(ledNumberInArray);
+    }
     return;
   }
   
@@ -492,50 +504,34 @@ void changePalette()
 {
   randomSeed(analogRead(0));
 
-  int number = random(0, 11);
+  int number = random(0, 7);
 
-  if ( number ==  0)  {
+  if (number ==  0)  {
     currentPalette = RainbowColors_p;
     currentBlending = LINEARBLEND;
   }
-  if ( number == 1)  {
+  if (number == 1)  {
     currentPalette = RainbowStripeColors_p;
     currentBlending = NOBLEND;
   }
-  if ( number == 2)  {
+  if (number == 2)  {
     currentPalette = RainbowStripeColors_p;
     currentBlending = LINEARBLEND;
   }
-  if ( number == 3)  {
+  if (number == 3)  {
     SetupPurpleAndGreenPalette();
     currentBlending = LINEARBLEND;
   }
-  if ( number == 4)  {
+  if (number == 4)  {
     SetupTotallyRandomPalette();
     currentBlending = LINEARBLEND;
   }
-  if ( number == 5)  {
-    SetupBlackAndWhiteStripedPalette();
-    currentBlending = NOBLEND;
-  }
-  if ( number == 6)  {
-    SetupBlackAndWhiteStripedPalette();
-    currentBlending = LINEARBLEND;
-  }
-  if ( number == 7)  {
+  if (number == 5)  {
     currentPalette = CloudColors_p;
     currentBlending = LINEARBLEND;
   }
-  if ( number == 8)  {
+  if (number == 6)  {
     currentPalette = PartyColors_p;
-    currentBlending = LINEARBLEND;
-  }
-  if ( number == 9)  {
-    currentPalette = myRedWhiteBluePalette_p;
-    currentBlending = NOBLEND;
-  }
-  if ( number == 10)  {
-    currentPalette = myRedWhiteBluePalette_p;
     currentBlending = LINEARBLEND;
   }
 }
@@ -584,10 +580,84 @@ void fillLEDsFromPaletteColors(int startColor)
 void scrollThroughColors(int displaySeconds) {
   int updatesPerSecond = 50;
 
-  int numberOfUpdatesToDisplay = displaySeconds * updatesPerSecond;
-  for (int i = 0; i < numberOfUpdatesToDisplay; i++) {
-    fillLEDsFromPaletteColors(i * 3);
-    FastLED.delay(1000 / updatesPerSecond);
+  for (int second = 0; second < displaySeconds; second++) {
+    handleClientRequest();
+    for (int i = 0; i < updatesPerSecond; i++) {
+      fillLEDsFromPaletteColors(i * 3);
+      FastLED.delay(1000 / updatesPerSecond);
+    }
+  }
+}
+
+int flagWidth = 12;
+void drawEnglishFlag(int xPos) {
+  if (DEBUG) {
+    Serial.print("Drawing British flag at ");
+    Serial.println(xPos);
+  }
+  for (int x = 0; x < flagWidth; x++) {
+    for (int y = 0; y < kMatrixHeight; y++) {
+      if (x == flagWidth/2 || x == flagWidth / 2 - 1) {
+        setFontPixel(y, x + xPos, CRGB::Red);
+      } else if(y == kMatrixHeight/2 || y == kMatrixHeight / 2 - 1) {
+        setFontPixel(y, x + xPos, CRGB::Red);
+      } else {
+        setFontPixel(y, x + xPos, CRGB::White);
+      }
+    }
+  }
+}
+
+void drawWelshFlag(int xPos) {
+  if (DEBUG) {
+    Serial.print("Drawing WelshFlag flag at ");
+    Serial.println(xPos);
+  }
+  for (int x = 0; x < flagWidth; x++) {
+    for (int y = 0; y < kMatrixHeight; y++) {
+      if ((x == 5 && y == 1) || (x == 6 && y == 1) || (x == 8 && y == 2) || (x == 7 && y == 3) ||  (x == 3 && y == 4) || (x == 7 && y == 4)) {
+        setFontPixel(y, x + xPos, CRGB::DarkRed);
+      } else if ((x == 5 && y == 1) || (x == 7 && y == 1) || (x == 5 && y == 2) || (x == 6 && y == 2) || (x == 4 && y == 3) || (x == 5 && y == 3) || (x == 6 && y == 3)) {
+        setFontPixel(y, x + xPos, CRGB::Red);
+      } else if (y < kMatrixHeight/2) {
+        setFontPixel(y, x + xPos, CRGB::White);
+      } else {
+        setFontPixel(y, x + xPos, CRGB::Green);
+      }
+    }
+  }
+}
+
+void displayBritishFlags(int startPos = 0) {
+  clearScreen();
+
+  int flagNo = 0;
+  for (int xPos = startPos; xPos < kMatrixWidth; xPos += (flagWidth + 2)) {
+    if (flagNo % 2) {
+      drawEnglishFlag(xPos);
+    } else {
+      drawWelshFlag(xPos);
+    }
+
+    flagNo++;
+  }
+
+  FastLED.show();
+}
+
+void scrollBritishFlags(int displaySeconds) {
+  int updatesPerSecond = 50;
+
+  int timePerLoop = ((float) 1000 / updatesPerSecond) * (flagWidth + 2);
+  int numberOfLoopsToDisplay = (displaySeconds * 1000) / timePerLoop;
+  Serial.print("Displaying flags: ");
+  Serial.println(numberOfLoopsToDisplay);
+  for (int i = 0; i < numberOfLoopsToDisplay; i++) {
+    handleClientRequest();
+    for (int xPos = -(flagWidth + 2) * 2; xPos++; xPos <= 0) {
+      displayBritishFlags(xPos);
+      FastLED.delay(1000 / updatesPerSecond);
+    }
   }
 }
 
@@ -605,34 +675,55 @@ void setup()
   flashMatrixRGB();
 }
 
+int currentScreen = 0;
+int totalScreens = 5;
+
+unsigned long nextScreenAt = 0;
 
 void loop() {
-  server.handleClient();
-  delay(5); // safety delay
+  handleClientRequest();
 
   if (!connectedToWifi()) {
     displayCenteredStringFor("Wifi Disconnected...", -1, Font5x8, CRGB::White, CRGB::Black, 500);
     connectToWifiWithStatusUpdates();
   }
 
-  // Display lake temp for 15 seconds
-  for (int i = 0; i < 3; i++) {
-    displayLakeTemperature(false);
-    FastLED.delay(5000);
+  if (millis() >= nextScreenAt) {
+    Serial.println("Going to next screen");
+    if (currentScreen % totalScreens == 0) {
+      // British flags for 7.5s
+      scrollBritishFlags(7);
+      nextScreenAt = millis() + 7500;
+    }
+
+    else if(currentScreen % totalScreens == 1) {
+      // Display lake temp for 15 seconds
+      displayLakeTemperature(false);
+      nextScreenAt = millis() + 15000;
+    }
+
+    else if(currentScreen % totalScreens == 2) {
+      // Random colors for 5 seconds
+      changePalette();
+      clearScreen();
+      scrollThroughColors(5);
+      nextScreenAt = millis() + 5000;
+    }
+    
+    else if(currentScreen % totalScreens == 3) {
+      // Humidity for 7.5 seconds
+      displayLakeTemperature(true);
+      nextScreenAt = millis() + 7500;
+    }
+
+    else {
+      // Max/min temp for 7.5 seconds
+      displayLakeStats();
+      nextScreenAt = millis() + 7500;
+    }
+
+    currentScreen++;
   }
-
-  // Random colors for 5 seconds
-  changePalette();
-  clearScreen();
-  scrollThroughColors(5);
-
-  // Humidity for 7.5 seconds
-  displayLakeTemperature(true);
-  FastLED.delay(7500);
-  
-  // Max/min temp for 7.5 seconds
-  displayLakeStats();
-  FastLED.delay(7500);
 }
 
 
