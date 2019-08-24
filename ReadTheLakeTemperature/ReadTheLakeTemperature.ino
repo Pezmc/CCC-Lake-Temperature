@@ -275,6 +275,7 @@ DynamicJsonDocument* getJSONData(jsonPath) {
   return &doc;
 }
 
+// ------ Graphing
 void displayLakeTemperature(bool humidity) {
   DynamicJsonDocument* dataPointer = getJSONData(path);
   if (!dataPointer) {
@@ -307,60 +308,27 @@ void displayLakeTemperature(bool humidity) {
   }
 }
 
-DynamicJsonDocument* getGraphData() {  
-  Serial.print("Making request to ");
-  Serial.print(host);
-  Serial.print(":");
-  Serial.println(port);
-
-  // Use WiFiClient class to create TCP connections
-  WiFiClient client;
-  if (!client.connect(host, port)) {
-      Serial.println("Connection failed");
-      return nullptr;
+void displayLakeStats() {
+  DynamicJsonDocument* statsPointer = getJSONData(statsPath);
+  if (!statsPointer) {
+    Serial.print("No stats returned! Trying again in 15 seconds");
+    delay(15000);
+    return;
   }
+  DynamicJsonDocument stats = *statsPointer;
 
-  Serial.print("Requesting URL: ");
-  Serial.println(path);
+  int count = stats["count"],
+  long maxTime = stats["maxTime"],
+  long minTime = stats["minTime"],
+  double maxVbat = stats["maxVbat"],
+  double minVbat = stats["minVbat"], 
+  double maxTemp = stats["maxTemp"],
+  double minTemp = stats["minTemp"],
 
-  // This will send the request to the server
-  client.print(String("GET ") + path + " HTTP/1.1\r\n" +
-               "Host: " + host + "\r\n" +
-               "Connection: close\r\n\r\n");
-  unsigned long timeout = millis();
-  while (client.available() == 0) {
-    if (millis() - timeout > 5000) {
-      Serial.println(">>> Client Timeout !");
-      client.stop();
-      return nullptr;
-    }
-  }
-  
-  String responseString = "";
-  while(client.available()) {
-      responseString = client.readStringUntil('\r');
-  }
 
-  DeserializationError error = deserializeJson(doc, responseString);
-
-  // Test if parsing succeeds.
-  if (error) {
-    Serial.print(F("deserializeJson() failed: "));
-    Serial.println(error.c_str());
-    Serial.print(responseString);
-    return nullptr;
-  }
-
-  /*
-  rh: 33.17,
-  rssi: -81,
-  t: 32.34,
-  status_message: "STALE",
-  status: 1,
-  updated: 1566569145722
-  */
-
-  return &doc;
+  String message = "TEMP MAX: " + String(maxTemp, 2) + " C, MIN: " + String(minTemp, 2) + " C" ;
+  const char* messageChars = message.c_str();
+  displayCenteredString(messageChars, -1, Font5x8, CRGB::Red, CRGB::Black);
 }
 
 void connectToWifiWithStatusUpdates() {
@@ -543,18 +511,27 @@ void loop() {
     connectToWifiWithStatusUpdates();
   }
 
+  // Display lake temp for 15 seconds
   for (int i = 0; i < 3; i++) {
     displayLakeTemperature(false);
     FastLED.delay(5000);
   }
- 
+
+  // Random colors for 5 seconds
   changePalette();
   clearScreen();
   scrollThroughColors(5);
 
+  // Humidity for 5 seconds
   displayLakeTemperature(true);
+  FastLED.delay(5000);
+
+  // Max/min temp for 5 seconds
+  displayLakeStats();
   FastLED.delay(5000);
 }
 
 
 // TODO DEAD LAKE TEMP.
+// Graph
+// Color based on min max
