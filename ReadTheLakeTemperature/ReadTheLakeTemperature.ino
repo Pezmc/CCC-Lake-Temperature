@@ -11,8 +11,11 @@ const char* ssid     = "Camp2019-things";
 const char* password = "camp2019";
 
 const char* host = "marekventur.com";
-const char* path = "/metrics/";
 const int port = 8973;
+
+const char* path = "/metrics/";
+const char* historyPath = "/metrics/history?size=144";
+const char* statsPath = "/metrics/stats";
 
 void connectToWifi() {
   Serial.println();
@@ -179,10 +182,6 @@ void drawMatrixRows(const struct CRGB & color) {
   }
 }
 
-void scrollMessage() {
-  
-}
-
 void displayCenteredStringFor(const char *msg, uint8_t row, PixelFont font, const struct CRGB & color, const struct CRGB & background, int timeMs) {
   displayCenteredString(msg, row, font, color, background);
   FastLED.delay(timeMs);
@@ -220,7 +219,95 @@ void drawChar(uint8_t ascii, uint8_t row, uint8_t col, const struct CRGB & color
 
 ///------ JSON
 DynamicJsonDocument doc(300);
-DynamicJsonDocument* getData() {  
+DynamicJsonDocument* getJSONData(jsonPath) {
+  Serial.print("Making request to ");
+  Serial.print(host);
+  Serial.print(":");
+  Serial.println(port);
+
+  // Use WiFiClient class to create TCP connections
+  WiFiClient client;
+  if (!client.connect(host, port)) {
+      Serial.println("Connection failed");
+      return nullptr;
+  }
+
+  Serial.print("Requesting URL: ");
+  Serial.println(jsonPath);
+
+  // This will send the request to the server
+  client.print(String("GET ") + path + " HTTP/1.1\r\n" +
+               "Host: " + host + "\r\n" +
+               "Connection: close\r\n\r\n");
+  unsigned long timeout = millis();
+  while (client.available() == 0) {
+    if (millis() - timeout > 5000) {
+      Serial.println(">>> Client Timeout !");
+      client.stop();
+      return nullptr;
+    }
+  }
+  
+  String responseString = "";
+  while(client.available()) {
+      responseString = client.readStringUntil('\r');
+  }
+
+  DeserializationError error = deserializeJson(doc, responseString);
+
+  // Test if parsing succeeds.
+  if (error) {
+    Serial.print(F("deserializeJson() failed: "));
+    Serial.println(error.c_str());
+    Serial.print(responseString);
+    return nullptr;
+  }
+
+  /*
+  rh: 33.17,
+  rssi: -81,
+  t: 32.34,
+  status_message: "STALE",
+  status: 1,
+  updated: 1566569145722
+  */
+
+  return &doc;
+}
+
+void displayLakeTemperature(bool humidity) {
+  DynamicJsonDocument* dataPointer = getJSONData(path);
+  if (!dataPointer) {
+    Serial.print("No data returned! Trying again in 15 seconds");
+    delay(15000);
+    return;
+  }
+  
+  DynamicJsonDocument json = *dataPointer;
+
+  double temperature = json["t"];
+  double relative_humidity = json["rh"];
+
+  Serial.print("temperature: ");
+  Serial.println(temperature);
+
+  Serial.print("humidity: ");
+  Serial.println(relative_humidity);
+
+  clearScreen();
+
+  if (!humidity) {
+    String message = "LIVE LAKE TEMP: " + String(temperature, 2) + " C!";
+    const char* messageChars = message.c_str();
+    displayCenteredString(messageChars, -1, Font5x8, CRGB::Blue, CRGB::Black);
+  } else { 
+    String message = "LIVE LAKE HUMIDITY: " + String(relative_humidity, 2) + "%!";
+    const char* messageChars = message.c_str();
+    displayCenteredString(messageChars, -1, Font5x8, CRGB::Blue, CRGB::Black);
+  }
+}
+
+DynamicJsonDocument* getGraphData() {  
   Serial.print("Making request to ");
   Serial.print(host);
   Serial.print(":");
@@ -274,38 +361,6 @@ DynamicJsonDocument* getData() {
   */
 
   return &doc;
-}
-
-void displayLakeTemperature(bool humidity) {
-  DynamicJsonDocument* dataPointer = getData();
-  if (!dataPointer) {
-    Serial.print("No data returned! Trying again in 15 seconds");
-    delay(15000);
-    return;
-  }
-  
-  DynamicJsonDocument json = *getData();
-
-  double temperature = json["t"];
-  double relative_humidity = json["rh"];
-
-  Serial.print("temperature: ");
-  Serial.println(temperature);
-
-  Serial.print("humidity: ");
-  Serial.println(relative_humidity);
-
-  clearScreen();
-
-  if (!humidity) {
-    String message = "LIVE LAKE TEMP: " + String(temperature, 2) + " C!";
-    const char* messageChars = message.c_str();
-    displayCenteredString(messageChars, -1, Font5x8, CRGB::Blue, CRGB::Black);
-  } else { 
-    String message = "LIVE LAKE HUMIDITY: " + String(relative_humidity, 2) + "%!";
-    const char* messageChars = message.c_str();
-    displayCenteredString(messageChars, -1, Font5x8, CRGB::Blue, CRGB::Black);
-  }
 }
 
 void connectToWifiWithStatusUpdates() {
